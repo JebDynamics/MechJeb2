@@ -13,12 +13,12 @@ namespace MuMech
         enum Operation
         {
             CIRCULARIZE, PERIAPSIS, APOAPSIS, ELLIPTICIZE, INCLINATION, PLANE, TRANSFER, MOON_RETURN,
-            INTERPLANETARY_TRANSFER, COURSE_CORRECTION, LAMBERT, KILL_RELVEL
+            INTERPLANETARY_TRANSFER, COURSE_CORRECTION, LAMBERT, KILL_RELVEL, PHASED_ORBIT
         };
         static int numOperations = Enum.GetNames(typeof(Operation)).Length;
         string[] operationStrings = new string[]{"circularize", "change periapsis", "change apoapsis", "change both Pe and Ap",
                   "change inclination", "match planes with target", "Hohmann transfer to target", "return from a moon",
-                  "transfer to another planet", "fine tune closest approach to target", "intercept target at chosen time", "match velocities with target"};
+                  "transfer to another planet", "fine tune closest approach to target", "intercept target at chosen time", "match velocities with target", "create a phased injection orbit" };
 
         enum TimeReference
         {
@@ -47,6 +47,8 @@ namespace MuMech
         public EditableDoubleMult circularizeAltitude = new EditableDoubleMult(150000, 1000);
         [Persistent(pass = (int)Pass.Global)]
         public EditableTime interceptInterval = 3600;
+        [Persistent(pass = (int)Pass.Global)]
+        public EditableDouble phases = 6;
 
         string errorMessage = "";
 
@@ -233,6 +235,13 @@ namespace MuMech
                 case Operation.KILL_RELVEL:
                     GUILayout.Label("Schedule the burn");
                     break;
+
+                case Operation.PHASED_ORBIT:
+                    GuiUtils.SimpleTextBox("Final periapsis:", newPeA, "km");
+                    GuiUtils.SimpleTextBox("Final apoapsis:", newApA, "km");
+                    GuiUtils.SimpleTextBox("Number of phases:", phases);
+                    GUILayout.Label("Schedule the burn");
+                    break;
             }
         }
 
@@ -251,6 +260,7 @@ namespace MuMech
             references[Operation.COURSE_CORRECTION] = new TimeReference[] { TimeReference.COMPUTED };
             references[Operation.LAMBERT] = new TimeReference[] { TimeReference.X_FROM_NOW };
             references[Operation.KILL_RELVEL] = new TimeReference[] { TimeReference.CLOSEST_APPROACH, TimeReference.X_FROM_NOW };
+            references[Operation.PHASED_ORBIT] = new TimeReference[] { TimeReference.X_FROM_NOW };
 
             TimeReference[] allowedReferences = references[operation];
 
@@ -405,6 +415,24 @@ namespace MuMech
             switch (operation)
             {
                 case Operation.CIRCULARIZE:
+                    break;
+
+                case Operation.PHASED_ORBIT:
+                    if (o.referenceBody.Radius + newPeA > o.Radius(UT))
+                    {
+                        error = true;
+                        errorMessage = "new periapsis cannot be higher than the altitude of the burn (" + burnAltitude + ")";
+                    }
+                    else if (o.referenceBody.Radius + newApA < o.Radius(UT))
+                    {
+                        error = true;
+                        errorMessage = "new apoapsis cannot be lower than the altitude of the burn (" + burnAltitude + ")";
+                    }
+                    else if (newPeA < -o.referenceBody.Radius)
+                    {
+                        error = true;
+                        errorMessage = "new periapsis cannot be lower than minus the radius of " + o.referenceBody.theName + "(-" + MuUtils.ToSI(o.referenceBody.Radius, 3) + "m)";
+                    }
                     break;
 
                 case Operation.ELLIPTICIZE:
@@ -616,6 +644,10 @@ namespace MuMech
             {
                 case Operation.CIRCULARIZE:
                     dV = OrbitalManeuverCalculator.DeltaVToCircularize(o, UT);
+                    break;
+
+                case Operation.PHASED_ORBIT:
+                    dV = OrbitalManeuverCalculator.DeltaVToPhasedInjectionOrbit(o, UT, newApA + bodyRadius, newPeA + bodyRadius, phases);
                     break;
 
                 case Operation.ELLIPTICIZE:

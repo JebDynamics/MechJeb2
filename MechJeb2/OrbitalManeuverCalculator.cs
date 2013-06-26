@@ -477,6 +477,18 @@ namespace MuMech
         {
             return target.SwappedOrbitalVelocityAtUT(UT) - o.SwappedOrbitalVelocityAtUT(UT);
         }
+
+        //Compute a phased orbit with orbital period (T) so that T2 = T1 * ( n - 1 ) / n ( n being desired number of divisions )
+        //and phased orbit shares Periapsis or Apoasis with desired final orbit. Default 6 phases yields 60 degree seperation per orbit.
+        public static Vector3d DeltaVToPhasedInjectionOrbit(Orbit o, double UT, double final_per, double final_apo, double phases )
+        {
+          double final_T = 2 * Math.PI * Math.Sqrt( Math.Pow( ( final_apo + final_per ) / 2, 3 ) / o.referenceBody.gravParameter );
+          double cube_power = 1.0 / 3.0;
+          double phase_SMA = Math.Pow( ( Math.Pow( final_T * ( phases - 1 ) / phases / ( 2 * Math.PI ), 2 ) * o.referenceBody.gravParameter ), cube_power );
+          double phase_apo = phase_SMA * ( 1 - ( final_apo / phase_SMA ) );
+
+          return DeltaVToEllipticize(o, UT, final_per, phase_apo);
+        }
     }
 
 }
